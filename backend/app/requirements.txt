@@ -15,18 +15,18 @@ pypdfium2==4.30.1
 # Vector DB & Embeddings
 faiss-cpu==1.11.0  # Change to faiss-gpu if using NVIDIA GPUs
 
-sentence-transformers==4.1.0
+
 
 # LLM & AI
 groq==0.24.0
 langchain==0.3.25
 langchain-community==0.3.24
 langchain-core==0.3.59
-langchain-huggingface==0.2.0
+
 langchain-text-splitters==0.3.8
 langsmith==0.3.42
 transformers==4.51.3
-torch==2.7.0  # Use torch==2.7.0+cu118 for CUDA 11.8
+
 
 # Utilities
 python-dotenv==1.1.0
@@ -41,3 +41,6 @@ opentelemetry-instrumentation-fastapi==0.54b0
 httpx==0.28.1
 backoff==2.2.1
 typing-extensions==4.13.2
+torch>=2.0.0
+sentence-transformers>=2.2.2
+langchain-huggingface>=0.0.4

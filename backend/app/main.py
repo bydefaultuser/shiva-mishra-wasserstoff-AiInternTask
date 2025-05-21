@@ -1,10 +1,9 @@
 from dotenv import load_dotenv
 import os
 import logging
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
-from fastapi.responses import JSONResponse
 from typing import Optional, Dict, List
 
 # Load environment variables
@@ -34,12 +33,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configure upload directory
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/data"))  # Use /tmp for GCP compatibility
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/data"))  # Use /tmp for compatibility
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Configure FAISS index path
 FAISS_PATH = Path(os.getenv("FAISS_PATH", "/tmp/faiss_index"))
-FAISS_PATH.parent.mkdir(parents=True, exist_ok=True)  # Ensure parent directory exists
+FAISS_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 @app.get("/files")
 def list_uploaded_files():
@@ -51,6 +50,28 @@ def list_uploaded_files():
         logger.error(f"Error listing files: {str(e)}")
         return JSONResponse(status_code=500, content={"error": "Failed to list files"})
 
+@app.get("/health")
+async def health_check():
+    """Endpoint to verify embedder and other services are working"""
+    try:
+        # Test embedder
+        embedder_instance = get_embedder()
+        test_embedding = embedder_instance.embed_query("test")
+        if not test_embedding or len(test_embedding) == 0:
+            raise ValueError("Empty embedding received")
+            
+        return {
+            "status": "healthy",
+            "embedder": "working",
+            "faiss_index": FAISS_PATH.exists()
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": str(e)}
+        )
+
 @app.get("/query")
 async def query_docs(
     q: str = Query(..., description="Your question to ask the documents"),
@@ -58,7 +79,16 @@ async def query_docs(
     docs: Optional[str] = None
 ):
     try:
-        embedder_instance = embedder.get_embedder()
+        # Add explicit error handling for embedder
+        try:
+            embedder_instance = embedder.get_embedder()
+        except Exception as embedder_error:
+            logger.error(f"❌ Failed to initialize embedder: {str(embedder_error)}", exc_info=True)
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Embedding service unavailable", "details": str(embedder_error)}
+            )
+        
         filters = {}
         if docs:
             doc_list = [d.strip() for d in docs.split(",")]
@@ -153,6 +183,13 @@ def process_document(file_path: Path, content_type: str, filename: str, chunk_si
     logger.info(f"🔄 Started processing {filename}")
 
     try:
+        # Initialize embedder early to fail fast if there are issues
+        try:
+            embedder_instance = get_embedder()
+        except Exception as e:
+            logger.error(f"❌ Failed to load embeddings even on CPU: {str(e)}", exc_info=True)
+            return
+
         if content_type.startswith("image/"):
             logger.info("🧠 Running OCR on image...")
             text = ocr.extract_text_from_image(file_path)
@@ -169,8 +206,11 @@ def process_document(file_path: Path, content_type: str, filename: str, chunk_si
         logger.info(f"📦 Chunked into {len(chunks)} chunks")
 
         logger.info("🧬 Embedding chunks...")
-        embedder_instance = get_embedder()
-        embeddings = embedder_instance.embed_documents(chunks)
+        embeddings = []
+        batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", 16))
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i + batch_size]
+            embeddings.extend(embedder_instance.embed_documents(batch))
         logger.info("✅ Embeddings created")
 
         logger.info("📚 Storing in FAISS vector store...")

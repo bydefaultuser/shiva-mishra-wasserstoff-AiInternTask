@@ -1,15 +1,27 @@
+import os
 import streamlit as st
 import requests
 import mimetypes
 import pandas as pd
-import os
+from tenacity import retry, stop_after_attempt, wait_fixed
 
-# Use environment variable for backend URL
-BACKEND_URL = os.getenv("BACKEND_URL", "https://shiva-backend-zm9k.onrender.com")
+# Configuration - Safe for Hugging Face Spaces
+os.environ['STREAMLIT_SERVER_ENABLE_XSRF_ONLY'] = 'true'
+os.environ['STREAMLIT_METRICS_ENABLED'] = 'false'
 
-st.set_page_config(page_title="Wasserstoff Gen-AI Chatbot", layout="wide")
+# Backend URL - Use environment variable or default
+BACKEND_URL = os.getenv("BACKEND_URL", "https://shiva-backend-zm9k.onrender.com").strip()
 
-# Custom CSS
+# Set page config
+st.set_page_config(
+    page_title="Wasserstoff Gen-AI Chatbot",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS optimized for Spaces
+# Add this CSS right after your st.markdown for page config (around line 20)
+
 st.markdown("""
 <style>
     body, .css-1d391kg, .css-1d391kg span {
@@ -58,7 +70,7 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
+# Title
 st.markdown("<h1 class='title'>📄 Wasserstoff Gen-AI Document Research</h1>", unsafe_allow_html=True)
 
 # Initialize session state
@@ -71,126 +83,130 @@ if 'selected_docs' not in st.session_state:
 if 'query' not in st.session_state:
     st.session_state.query = ""
 
-@st.cache_data(ttl=300)
-def get_known_documents():
+# Retry configuration for backend calls
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+def backend_request(method, endpoint, **kwargs):
+    """Safe wrapper for backend requests with retry logic"""
     try:
-        resp = requests.get(f"{BACKEND_URL}/files", timeout=10)
-        resp.raise_for_status()
-        return resp.json().get("files", [])
-    except requests.exceptions.ConnectionError:
-        st.error("❌ Failed to connect to backend. Ensure backend is running and reachable.")
-        return []
-    except Exception as e:
-        st.error(f"❌ Failed to fetch document list: {e}")
-        return []
+        url = f"{BACKEND_URL}/{endpoint}"
+        response = requests.request(method, url, timeout=30, **kwargs)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Backend request failed: {str(e)}")
+        return None
 
-known_docs = get_known_documents()
+# Document management
+@st.cache_data(ttl=300, show_spinner="Fetching document list...")
+def get_known_documents():
+    """Get list of available documents with caching"""
+    response = backend_request("GET", "files")
+    return response.get("files", []) if response else []
 
-# Sidebar layout
+# Sidebar - Document selection
 with st.sidebar:
-    st.header("Upload Documents (75+)")
-    uploaded_files = st.file_uploader("Upload multiple PDF or Image files", type=["pdf", "png", "jpg", "jpeg"], accept_multiple_files=True)
+    st.header("Document Management")
+    
+    # File upload section
+    st.subheader("Upload Documents")
+    uploaded_files = st.file_uploader(
+        "Upload PDF or Image files",
+        type=["pdf", "png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+        key="file_uploader"
+    )
+    
     if uploaded_files:
         for uploaded_file in uploaded_files:
-            mime_type, _ = mimetypes.guess_type(uploaded_file.name)
-            files = {
-                "file": (uploaded_file.name, uploaded_file.getvalue(), mime_type or "application/octet-stream")
-            }
-            with st.spinner(f"Uploading and processing {uploaded_file.name}..."):
-                try:
-                    resp = requests.post(f"{BACKEND_URL}/upload", files=files, timeout=30)
-                    resp.raise_for_status()
-                    status = resp.json().get("status")
-                    st.success(f"Uploaded: {uploaded_file.name} (Status: {status})")
-                    known_docs = get_known_documents()  # Refresh list
-                except requests.exceptions.RequestException as e:
-                    st.error(f"Upload failed for {uploaded_file.name}: {str(e)}")
-        if uploaded_files:
-            st.info("All selected files uploaded and processing started.")
-
+            mime_type = mimetypes.guess_type(uploaded_file.name)[0] or "application/octet-stream"
+            files = {"file": (uploaded_file.name, uploaded_file.getvalue(), mime_type)}
+            
+            with st.spinner(f"Processing {uploaded_file.name}..."):
+                response = backend_request("POST", "upload", files=files)
+                if response:
+                    st.success(f"Uploaded: {uploaded_file.name}")
+    
+    # Document selection
     st.markdown("---")
+    known_docs = get_known_documents()
     st.session_state.selected_docs = st.multiselect(
         "Select documents to search",
         options=known_docs,
-        default=known_docs
+        default=st.session_state.selected_docs,
+        key="doc_select"
     )
 
-# Main content
-st.header("Ask a question about the documents")
-st.session_state.query = st.text_input("Enter your question here:", value=st.session_state.query)
+# Main content area
+st.header("Document Query")
 
-if st.button("Search") and st.session_state.query.strip():
-    if not st.session_state.selected_docs:
-        st.warning("Please select at least one document to search.")
+# Query input
+st.session_state.query = st.text_input(
+    "Enter your question:",
+    value=st.session_state.query,
+    key="query_input",
+    placeholder="Ask about the selected documents..."
+)
+
+# Search button
+if st.button("Search Documents", key="search_btn"):
+    if not st.session_state.query.strip():
+        st.warning("Please enter a question")
+    elif not st.session_state.selected_docs:
+        st.warning("Please select at least one document")
     else:
-        with st.spinner("Searching..."):
-            try:
-                params = {
-                    "q": st.session_state.query,
-                    "docs": ",".join(st.session_state.selected_docs)
-                }
-                resp = requests.get(f"{BACKEND_URL}/query", params=params, timeout=30)
-                resp.raise_for_status()
-                data = resp.json()
+        with st.spinner("Searching documents..."):
+            params = {
+                "q": st.session_state.query,
+                "docs": ",".join(st.session_state.selected_docs)
+            }
+            response = backend_request("GET", "query", params=params)
+            
+            if response:
+                st.session_state.results = response.get("results", [])
+                if not st.session_state.results:
+                    st.info("No relevant information found")
 
-                # Update session state
-                st.session_state.results = data.get("results", [])
-                st.session_state.detailed_summary = ""  # Reset detailed summary
-
-                if st.session_state.results:
-                    st.markdown("### Individual Document Responses:")
-                    df = pd.DataFrame(st.session_state.results)
-                    st.dataframe(df[["filename", "content", "citation"]])
-                else:
-                    st.info("No relevant information found in the selected documents.")
-
-            except requests.exceptions.RequestException as e:
-                st.error(f"Search failed: {e}")
-
-# Detailed summary section
+# Display results
 if st.session_state.results:
+    st.subheader("Search Results")
+    df = pd.DataFrame(st.session_state.results)
+    st.dataframe(df[["filename", "content", "citation"]], use_container_width=True)
+
+    # Summary generation
     st.markdown("---")
-    st.subheader("Generate Detailed Summary with AI")
-    style_option = st.selectbox("Summary Style:", ["detailed", "concise"])
-    include_sources_option = st.checkbox("Include Document Citations in Summary", value=True)
-    length_option = st.selectbox("Summary Length:", ["long", "medium", "short"])
+    st.subheader("Generate AI Summary")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        style_option = st.selectbox("Summary Style", ["detailed", "concise"])
+    with col2:
+        length_option = st.selectbox("Summary Length", ["long", "medium", "short"])
+    
+    include_sources = st.checkbox("Include citations", value=True)
+    
+    if st.button("Generate Summary", key="summary_btn"):
+        with st.spinner("Generating summary..."):
+            payload = {
+                "question": st.session_state.query,
+                "results": st.session_state.results,
+                "style": style_option,
+                "include_sources": include_sources,
+                "length": length_option
+            }
+            response = backend_request("POST", "synthesize", json=payload)
+            
+            if response and (answer := response.get("answer")):
+                st.session_state.detailed_summary = answer
+                st.markdown("### Detailed Summary")
+                st.markdown(
+                    f"<div class='result-box detailed-summary'>{answer}</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.error("Failed to generate summary")
 
-    if st.button("Generate Summary"):
-        with st.spinner("Synthesizing detailed answer..."):
-            try:
-                synthesis_resp = requests.post(f"{BACKEND_URL}/synthesize", json={
-                    "question": st.session_state.query,
-                    "results": st.session_state.results,
-                    "style": style_option,
-                    "include_sources": include_sources_option,
-                    "length": length_option
-                }, timeout=60)
-                synthesis_resp.raise_for_status()
-                st.session_state.detailed_summary = synthesis_resp.json().get("answer", "")
-
-                if not st.session_state.detailed_summary:
-                    st.error("Received empty response from AI")
-            except requests.exceptions.RequestException as e:
-                st.error(f"LLM synthesis failed: {e}")
-
-    # Display detailed summary if available
-    if st.session_state.detailed_summary:
-        st.markdown("## 🧠 Detailed AI Summary")
-        st.markdown(
-            f"<div class='result-box detailed-summary'>{st.session_state.detailed_summary}</div>",
-            unsafe_allow_html=True
-        )
-elif not st.session_state.results and not st.session_state.detailed_summary and st.session_state.query:
-    st.info("No results found for your query. Try a different question or select more documents.")
-elif not st.session_state.selected_docs and known_docs:
-    st.info("Please select documents from the sidebar to begin searching.")
-elif not known_docs:
-    st.info("Please upload documents to start.")
-
-# Clear button to reset the session
-if st.sidebar.button("Clear Session"):
-    st.session_state.results = []
-    st.session_state.detailed_summary = ""
-    st.session_state.query = ""
-    st.session_state.selected_docs = known_docs  # Reset selected docs to all
+# Clear session button
+if st.sidebar.button("Clear Session", key="clear_btn"):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
     st.rerun()
