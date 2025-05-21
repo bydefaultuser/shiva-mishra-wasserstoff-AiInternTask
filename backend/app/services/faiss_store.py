@@ -1,31 +1,42 @@
-from typing import List, Optional, Dict
 import os
 import pickle
 from pathlib import Path
 import logging
+from typing import List, Optional, Dict
 
-from langchain_community.vectorstores import FAISS   # LangChain’s FAISS wrapper
+from langchain_community.vectorstores import FAISS
 from langchain.docstore.document import Document
 from langchain.embeddings.base import Embeddings
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Path to store the FAISS index
-VDB_PATH = Path(os.getenv("FAISS_PATH", "vector_store/faiss_index")).with_suffix(".pkl")
+# Get FAISS index path from environment variable
+FAISS_PATH = os.getenv("FAISS_PATH", "/tmp/faiss_index")  # Default to /tmp for GCP
+VDB_PATH = Path(FAISS_PATH).with_suffix(".pkl")  # Add .pkl extension
 
 def _save_index(vstore: FAISS):
-    """Save FAISS index to disk."""
-    VDB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(VDB_PATH, "wb") as f:
-        pickle.dump(vstore, f)
-    logger.info(f"💾  FAISS index saved → {VDB_PATH}")
+    """Save FAISS index to disk using environment variable path"""
+    try:
+        VDB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(VDB_PATH, "wb") as f:
+            pickle.dump(vstore, f)
+        logger.info(f"💾 FAISS index saved to {VDB_PATH}")
+    except Exception as e:
+        logger.error(f"❌ Failed to save FAISS index: {str(e)}")
 
 def _load_index() -> Optional[FAISS]:
-    """Load FAISS index from disk, if available."""
-    if VDB_PATH.exists():
-        with open(VDB_PATH, "rb") as f:
-            return pickle.load(f)
-    return None
+    """Load FAISS index from disk if available"""
+    try:
+        if VDB_PATH.exists():
+            with open(VDB_PATH, "rb") as f:
+                return pickle.load(f)
+        logger.warning("⚠️ No existing FAISS index found")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Failed to load FAISS index: {str(e)}")
+        return None
 
 def store_chunks(
     embedder: Embeddings,
@@ -33,20 +44,24 @@ def store_chunks(
     metadatas: List[dict],
 ):
     """
-    Stores text chunks and metadata into a local FAISS vector store.
+    Stores text chunks and metadata into a FAISS vector store.
     Appends if an index already exists.
     """
-    docs = [Document(page_content=c, metadata=m) for c, m in zip(chunks, metadatas)]
+    try:
+        docs = [Document(page_content=c, metadata=m) for c, m in zip(chunks, metadatas)]
+        
+        index = _load_index()
+        if index:
+            logger.info("🔄 Appending to existing FAISS index")
+            index.add_documents(docs)
+        else:
+            logger.info("🆕 Creating new FAISS index")
+            index = FAISS.from_documents(docs, embedder)
 
-    index = _load_index()
-    if index:
-        logger.info("🔄  Appending to existing FAISS index")
-        index.add_documents(docs)
-    else:
-        logger.info("🆕  Creating new FAISS index")
-        index = FAISS.from_documents(docs, embedder)
-
-    _save_index(index)
+        _save_index(index)
+    except Exception as e:
+        logger.error(f"❌ Failed to store chunks: {str(e)}")
+        raise
 
 def query_chunks(
     embedder: Embeddings,
@@ -58,27 +73,31 @@ def query_chunks(
     Queries the FAISS index and optionally filters results by metadata.
     Returns top-k most similar chunks.
     """
-    index = _load_index()
-    if not index:
-        raise RuntimeError("No FAISS index found. Upload documents first.")
+    try:
+        index = _load_index()
+        if not index:
+            raise RuntimeError("No FAISS index found. Upload documents first.")
 
-    docs_and_scores = index.similarity_search_with_score(question, k=k)
+        docs_and_scores = index.similarity_search_with_score(question, k=k)
 
-    if filters and "filename" in filters:
-        allowed = set(filters["filename"]["$in"])
-        original_count = len(docs_and_scores)
-        docs_and_scores = [
-            (doc, score)
+        if filters and "filename" in filters:
+            allowed = set(filters["filename"]["$in"])
+            original_count = len(docs_and_scores)
+            docs_and_scores = [
+                (doc, score)
+                for doc, score in docs_and_scores
+                if doc.metadata.get("filename") in allowed
+            ]
+            logger.info(f"📎 Filtered results by filename: {len(docs_and_scores)} / {original_count} retained")
+
+        return [
+            {
+                "content": doc.page_content,
+                "metadata": doc.metadata,
+                "score": float(score)  # Ensure JSON serialization
+            }
             for doc, score in docs_and_scores
-            if doc.metadata.get("filename") in allowed
         ]
-        logger.info(f"📎 Filtered results by filename: {len(docs_and_scores)} / {original_count} retained")
-
-    return [
-        {
-            "content": doc.page_content,
-            "metadata": doc.metadata,
-            "score": float(score)  # Ensure JSON serialization
-        }
-        for doc, score in docs_and_scores
-    ]
+    except Exception as e:
+        logger.error(f"❌ Query failed: {str(e)}")
+        raise

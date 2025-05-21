@@ -1,41 +1,55 @@
 from dotenv import load_dotenv
-
-load_dotenv()
+import os
+import logging
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
-import os
 from fastapi.responses import JSONResponse
-import logging
 from typing import Optional, Dict, List
 
-from .services import ocr, pdf_ocr, chunker, embedder
-from .services.faiss_store import store_chunks as faiss_store_chunks, query_chunks
-from .services.embedder import get_embedder
-from .services.llm import generate_structured_answer
+# Load environment variables
+load_dotenv()
 
+# Import services
+from services import ocr, pdf_ocr, chunker, embedder
+from services.faiss_store import store_chunks as faiss_store_chunks, query_chunks
+from services.embedder import get_embedder
+from services.llm import generate_structured_answer
+
+# Initialize FastAPI
 app = FastAPI(title="Document Research Backend (FAISS Only)")
 
-# Configure CORS
+# Configure CORS (use environment variable for allowed origins)
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8501").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = Path(__file__).parent.parent / "data"
+# Configure upload directory
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/data"))  # Use /tmp for GCP compatibility
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Configure FAISS index path
+FAISS_PATH = Path(os.getenv("FAISS_PATH", "/tmp/faiss_index"))
+FAISS_PATH.parent.mkdir(parents=True, exist_ok=True)  # Ensure parent directory exists
 
 @app.get("/files")
 def list_uploaded_files():
     """Return list of uploaded document filenames"""
-    files = [f.name for f in UPLOAD_DIR.glob("*") if f.is_file()]
-    return {"files": files}
+    try:
+        files = [f.name for f in UPLOAD_DIR.glob("*") if f.is_file()]
+        return {"files": files}
+    except Exception as e:
+        logger.error(f"Error listing files: {str(e)}")
+        return JSONResponse(status_code=500, content={"error": "Failed to list files"})
 
 @app.get("/query")
 async def query_docs(
@@ -52,7 +66,7 @@ async def query_docs(
 
         retrieved_chunks = query_chunks(embedder_instance, q, k=k, filters=filters)
 
-        # Extract relevant metadata for citation (assuming page_number is in metadata)
+        # Extract relevant metadata for citation
         detailed_results = []
         for chunk in retrieved_chunks:
             detailed_results.append({

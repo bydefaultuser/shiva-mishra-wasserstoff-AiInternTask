@@ -1,9 +1,11 @@
 import streamlit as st
 import requests
 import mimetypes
-import pandas as pd  # For displaying tables
+import pandas as pd
+import os
 
-API_URL = "http://127.0.0.1:8000"  # Update for deployment
+# Use environment variable for backend URL
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="Wasserstoff Gen-AI Chatbot", layout="wide")
 
@@ -72,11 +74,14 @@ if 'query' not in st.session_state:
 @st.cache_data(ttl=300)
 def get_known_documents():
     try:
-        resp = requests.get(f"{API_URL}/files")
+        resp = requests.get(f"{BACKEND_URL}/files", timeout=10)
         resp.raise_for_status()
         return resp.json().get("files", [])
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Failed to connect to backend. Ensure backend is running and reachable.")
+        return []
     except Exception as e:
-        st.error(f"Failed to fetch document list: {e}")
+        st.error(f"❌ Failed to fetch document list: {e}")
         return []
 
 known_docs = get_known_documents()
@@ -93,13 +98,13 @@ with st.sidebar:
             }
             with st.spinner(f"Uploading and processing {uploaded_file.name}..."):
                 try:
-                    resp = requests.post(f"{API_URL}/upload", files=files)
+                    resp = requests.post(f"{BACKEND_URL}/upload", files=files, timeout=30)
                     resp.raise_for_status()
                     status = resp.json().get("status")
                     st.success(f"Uploaded: {uploaded_file.name} (Status: {status})")
                     known_docs = get_known_documents()  # Refresh list
-                except Exception as e:
-                    st.error(f"Upload failed for {uploaded_file.name}: {e}")
+                except requests.exceptions.RequestException as e:
+                    st.error(f"Upload failed for {uploaded_file.name}: {str(e)}")
         if uploaded_files:
             st.info("All selected files uploaded and processing started.")
 
@@ -124,7 +129,7 @@ if st.button("Search") and st.session_state.query.strip():
                     "q": st.session_state.query,
                     "docs": ",".join(st.session_state.selected_docs)
                 }
-                resp = requests.get(f"{API_URL}/query", params=params)
+                resp = requests.get(f"{BACKEND_URL}/query", params=params, timeout=30)
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -139,7 +144,7 @@ if st.button("Search") and st.session_state.query.strip():
                 else:
                     st.info("No relevant information found in the selected documents.")
 
-            except Exception as e:
+            except requests.exceptions.RequestException as e:
                 st.error(f"Search failed: {e}")
 
 # Detailed summary section
@@ -153,19 +158,19 @@ if st.session_state.results:
     if st.button("Generate Summary"):
         with st.spinner("Synthesizing detailed answer..."):
             try:
-                synthesis_resp = requests.post(f"{API_URL}/synthesize", json={
+                synthesis_resp = requests.post(f"{BACKEND_URL}/synthesize", json={
                     "question": st.session_state.query,
                     "results": st.session_state.results,
                     "style": style_option,
                     "include_sources": include_sources_option,
                     "length": length_option
-                })
+                }, timeout=60)
                 synthesis_resp.raise_for_status()
                 st.session_state.detailed_summary = synthesis_resp.json().get("answer", "")
 
                 if not st.session_state.detailed_summary:
                     st.error("Received empty response from AI")
-            except Exception as e:
+            except requests.exceptions.RequestException as e:
                 st.error(f"LLM synthesis failed: {e}")
 
     # Display detailed summary if available
@@ -188,4 +193,4 @@ if st.sidebar.button("Clear Session"):
     st.session_state.detailed_summary = ""
     st.session_state.query = ""
     st.session_state.selected_docs = known_docs  # Reset selected docs to all
-    st.experimental_rerun()
+    st.rerun()

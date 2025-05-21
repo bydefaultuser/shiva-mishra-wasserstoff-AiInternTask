@@ -1,4 +1,4 @@
-from ..config import CHROMA_DB_PATH, TESSERACT_PATH
+from config import TESSERACT_PATH
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from typing import List, Optional
 import logging

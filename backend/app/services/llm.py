@@ -1,19 +1,35 @@
-# backend/app/services/llm.py
 import os
 from groq import Groq
 from typing import List, Dict
+import logging
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-model = os.getenv("GROQ_MODEL", "llama3-70b-8192")
-if not client:
-    raise ValueError("GROQ API key is not set. Please set the GROQ_API_KEY environment variable.")
+logger = logging.getLogger(__name__)
 
-def generate_structured_answer(question: str, docs: List[Dict], style: str = "detailed", include_sources: bool = True, length: str = "long") -> str:
+# Initialize Groq client using environment variables
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-70b-8192")
+
+if not GROQ_API_KEY:
+    logger.error("❌ GROQ_API_KEY is not set. Please set it in your environment.")
+    raise ValueError("GROQ_API_KEY is not set. Please set the GROQ_API_KEY environment variable.")
+
+try:
+    client = Groq(api_key=GROQ_API_KEY)
+except Exception as e:
+    logger.error(f"❌ Failed to initialize Groq client: {e}")
+    raise
+
+def generate_structured_answer(
+    question: str,
+    docs: List[Dict],
+    style: str = "detailed",
+    include_sources: bool = True,
+    length: str = "long"
+) -> str:
     """
     Accepts a user question and retrieved document chunks with metadata.
     Returns a structured LLM response with document-level answers and thematic synthesis in Markdown format.
     """
-
     formatted_chunks = ""
     for i, doc in enumerate(docs):
         doc_id = f"DOC{i + 1:03}"
@@ -67,16 +83,17 @@ You are an expert legal/technical summarizer. Do the following:
 Write clearly and concisely.
 """
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{
-            "role": "user",
-            "content": prompt
-        }],
-        temperature=0.7,
-        max_tokens=2048
-    )
-
-    llm_response = response.choices[0].message.content
-
-    return llm_response
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{
+                "role": "user",
+                "content": prompt
+            }],
+            temperature=0.7,
+            max_tokens=2048
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"LLM generation failed: {e}")
+        raise
