@@ -5,7 +5,7 @@ import pandas as pd
 import os
 
 # Use environment variable for backend URL
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+BACKEND_URL = os.getenv("BACKEND_URL", "https://shiva-backend-zm9k.onrender.com ")
 
 st.set_page_config(page_title="Wasserstoff Gen-AI Chatbot", layout="wide")
 
