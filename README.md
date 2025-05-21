@@ -117,16 +117,6 @@ Create a Hugging Face Space: Go to https://huggingface.co/spaces and create a ne
 4.  **Initiate Search:** Click the "Search" button (or a similar interactive element) to start the process of retrieving relevant information from the selected documents based on your question. The individual responses extracted from the most relevant documents will then be displayed.
 5.  **Generate Synthesized Response:** Look for an option (e.g., a button or a section) to generate a synthesized response. You might have options to adjust the style and length of the summary. Clicking this will trigger the LLM to identify common themes across the retrieved information and present a final answer in a chat-like format with citations.
 
-## Notes and Considerations
 
-* **OCR Quality:** The accuracy of the Optical Character Recognition (OCR) for scanned images can vary depending on the image quality. Ensure your scanned documents are as clear as possible.
-* **LLM Performance:** The quality of the synthesized answers and the identified themes is heavily reliant on the capabilities of the Generative AI model you are using (e.g., Groq's Llama 3).
-* **Dataset Size for Themes:** For the chatbot to effectively identify meaningful themes, it is recommended to provide a diverse set of at least 75 semantically related documents.
-* **Resource Limitations on Free Platforms:** Be aware that free hosting platforms like Hugging Face Spaces may have limitations on computing resources and can experience "cold starts" if the application hasn't been accessed recently.
-* **Potential Improvements:** For a more robust and user-friendly application, consider implementing more comprehensive error handling, improving the user interface and user experience, and potentially adding features for document management and visualization.
-
-## Contact
-
-**Shiva Mishra**
 
 
