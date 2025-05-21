@@ -1,7 +1,10 @@
 from dotenv import load_dotenv
 import os
 import logging
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query, JSONResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query
+from fastapi.responses import JSONResponse
+
+
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from typing import Optional, Dict, List

@@ -1,132 +1,166 @@
 
-# Wasserstoff Gen-AI Document Research Chatbot
 
-## Overview
+---
 
-This project is an interactive chatbot designed to perform research across a large set of documents, identify common themes, and provide detailed, cited responses to user queries. It fulfills the requirements of the AI Software Intern - Internship Task Document provided by Wasserstoff.
+## `README.md` 
 
-The chatbot allows users to upload multiple documents (PDF and scanned images), processes them using OCR (if necessary), and utilizes a vector store (FAISS) for efficient semantic search. It then employs a Generative AI model (via the Groq API) to synthesize answers and identify overarching themes, with clear citations back to the original documents.
+# 🚀 Wasserstoff AI Document Research Assistant
 
-## Key Features
+A document research assistant that lets users upload PDFs or images and ask questions about their content. The system uses OCR, semantic embeddings, and a local FAISS vector store for fast and accurate retrieval.
 
-* **Document Upload:** Users can upload 75+ documents in PDF and image formats (PNG, JPG, JPEG).
-* **OCR Processing:** Scanned images are processed using Optical Character Recognition (OCR) to extract text content.
-* **Knowledge Base:** Uploaded documents are chunked, embedded, and stored in a FAISS vector store for semantic search.
-* **Document Search:** Users can ask questions, and the chatbot retrieves relevant information from the uploaded documents based on semantic similarity.
-* **Cited Responses:** The chatbot provides answers with citations indicating the source documents (based on filename, page, and chunk number).
-* **Theme Identification:** The chatbot analyzes the retrieved information to identify common themes across the documents.
-* **Synthesized Output:** The final response is presented in a chat format, clearly marking citations with document IDs and grouping information under identified themes.
-* **Hugging Face Spaces Deployment:** The application is designed to be deployable on Hugging Face Spaces for easy access and demonstration.
+---
 
-## Folder Structure
+## 🔍 Overview
+
+This project enables semantic search and Q&A over documents using a combination of:
+
+- 🧠 **FastAPI** backend for OCR, embeddings, and vector search
+- 🎛️ **Streamlit** frontend for uploading documents and asking questions
+- 📦 **FAISS** for fast, local vector similarity search
+- 🤖 **Groq API** for natural language answers
+
+---
+
+## 🧱 Folder Structure
+
 ```
-chatbot_theme_identifier/
+
+project-root/
 ├── backend/
-│   ├── app/
-│   │   ├── core/
-│   │   │   └── database.py  (Optional: If you explored database integration)
-│   │   ├── models/
-│   │   ├── services/
-│   │   │   ├── chunker.py
-│   │   │   ├── embedder.py
-│   │   │   ├── faiss_store.py
-│   │   │   ├── llm.py
-│   │   │   ├── ocr.py
-│   │   │   └── pdf_ocr.py
-│   │   ├── main.py
-│   │   └── config.py
-│   └── data/             (Directory for uploaded documents and FAISS index)
-├── requirements.txt
-├── Dockerfile          (Optional: If you created a Dockerfile)
-├── README.md
+│   └── app/
+│       ├── main.py           # FastAPI entry point
+│       ├── config.py         # Configurations and environment variables
+│       ├── services/         # Core logic: OCR, embedding, FAISS store
+│       └── requirements.txt  # Backend dependencies
+│
+├── frontend/
+│   ├── app.py                # Streamlit frontend
+│   └── requirements.txt      # Frontend dependencies
+│
+└── README.md                 # Project instructions
 
-```
-## Setup and Installation
+````
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository_url>
-    cd chatbot_theme_identifier
-    ```
+---
 
-2.  **Create a virtual environment (recommended):**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Linux/macOS
-    .\venv\Scripts\activate  # On Windows
-    ```
+## 🛠️ Features
 
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+- Upload and process PDFs or images
+- Extract text with OCR (`pytesseract`)
+- Generate embeddings with `sentence-transformers`
+- Perform fast semantic search with `faiss-cpu`
+- Synthesize answers using LLMs via Groq API
+- Easy-to-use Streamlit interface
 
-4.  **Environment Variables:**
-    * Create a `.env` file in the `backend` directory.
-    * Add your Groq API key (or OpenAI API key if you used that) to the `.env` file:
-        ```
-        GROQ_API_KEY=YOUR_GROQ_API_KEY
-        # Or
-        # OPENAI_API_KEY=YOUR_OPENAI_API_KEY
-        ```
-    * Optionally, you can set the FAISS index path:
-        ```
-        FAISS_PATH=vector_store/faiss_index
-        ```
-    * Optionally, configure allowed origins for CORS:
-        ```
-        ALLOWED_ORIGINS=http://localhost:3000,[http://your-deployed-frontend.com](http://your-deployed-frontend.com)
-        ```
+---
 
-## Running the Backend (FastAPI)
+## ⚙️ Backend API Endpoints
 
-Navigate to the `backend/app` directory and run the FastAPI application using Uvicorn:
+| Endpoint     | Description                             |
+|--------------|-----------------------------------------|
+| `/upload`    | Accepts and processes files             |
+| `/query`     | Searches vector store for top matches   |
+| `/synthesize`| Generates an answer from retrieved text |
+| `/health`    | Health check endpoint                   |
+
+> **Tech stack**: FastAPI, FAISS, pytesseract, HuggingFace Transformers, Groq API
+
+---
+
+## 💻 Frontend Functionality
+
+- Upload PDFs/images
+- Select documents for search
+- Ask questions
+- Get answers from backend
+
+> Deployed using Streamlit and Hugging Face Spaces.
+
+---
+
+## 🚀 Deployment Instructions
+
+### 1. Deploy Backend on Render
+
+Use Render with a Docker build or directly run `uvicorn`. Set the following environment variables:
+
+| Variable         | Value                                      |
+|------------------|--------------------------------------------|
+| `GROQ_API_KEY`   | Your Groq API key                          |
+| `TESSERACT_PATH` | `/usr/bin/tesseract`                       |
+| `FAISS_PATH`     | `/tmp/faiss_index`                         |
+| `ALLOWED_ORIGINS`| `https://your-frontend-url`                |
+
+### 2. Deploy Frontend on Hugging Face / Streamlit
+
+In your environment config:
+
+| Variable       | Value                                      |
+|----------------|--------------------------------------------|
+| `BACKEND_URL`  | `https://your-backend-url.onrender.com`   |
+| `GROQ_API_KEY` | Your Groq API key                          |
+
+---
+
+## 🧪 Local Development
+
+Run backend:
 
 ```bash
 cd backend/app
-uvicorn main:app --reload
-The backend will be accessible at http://localhost:8000.
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000
+````
 
-Running the Frontend (Streamlit)
-Navigate to the root of the chatbot_theme_identifier directory and run the Streamlit application:
+Run frontend:
 
-Bash
-
-streamlit run app.py
-The frontend will typically be accessible at http://localhost:8501.
-
-Deployment on Hugging Face Spaces
-Create a Hugging Face Space: Go to https://huggingface.co/spaces and create a new Space.
+```bash
+cd frontend
+pip install -r requirements.txt
+streamlit run app.py --server.headless true
 ```
-## Deployment on Hugging Face Spaces
 
-* **Choose Streamlit SDK:** When creating a new Space on Hugging Face, select the Streamlit SDK as the application type.
-* **Link Git Repository:** Connect your Hugging Face Space to the Git repository where you have pushed your `chatbot_theme_identifier` project code.
-* **Automatic `app.py` Execution:** Hugging Face Spaces will automatically attempt to run the `app.py` file located in the root of your repository.
-* **Backend Configuration:**
-    * **Separate Backend (Recommended for Production):** Ensure your `app.py` is configured to communicate with your deployed FastAPI backend (if you choose to deploy it separately on platforms like Render or Railway) via its accessible URL.
-    * **Running Backend in Space (Less Recommended):** If you attempt to run the FastAPI backend within the same Hugging Face Space, you'll need to manage the concurrent execution of both Streamlit and FastAPI within the Space's constraints.
-* **Environment Variables:** Configure any necessary environment variables, such as your Groq or OpenAI API key, as Secrets within the "Settings" tab of your Hugging Face Space.
-* **Git LFS Support:** Hugging Face Spaces provides built-in support for Git Large File Storage (LFS), which is helpful if you have large files (though your FAISS index should ideally be rebuilt on the Space).
+Go to: [http://localhost:8501](http://localhost:8501)
 
-## Usage
+---
 
-1.  **Upload Documents:** Once the Streamlit application is running on Hugging Face Spaces, use the file uploader typically located in the sidebar to upload your collection of PDF and image documents (a minimum of 75 documents is recommended for effective theme identification).
-2.  **Select Documents for Query:** In the sidebar, you'll likely have options (e.g., checkboxes or a multi-select) to choose which of the uploaded documents you want to include in your current search query.
-3.  **Ask a Question:** Enter your research question or query into the text input field provided in the main area of the application.
-4.  **Initiate Search:** Click the "Search" button (or a similar interactive element) to start the process of retrieving relevant information from the selected documents based on your question. The individual responses extracted from the most relevant documents will then be displayed.
-5.  **Generate Synthesized Response:** Look for an option (e.g., a button or a section) to generate a synthesized response. You might have options to adjust the style and length of the summary. Clicking this will trigger the LLM to identify common themes across the retrieved information and present a final answer in a chat-like format with citations.
+## 🌿 Branch Strategy
 
-## Notes and Considerations
+We use one primary branch for deployable code:
 
-* **OCR Quality:** The accuracy of the Optical Character Recognition (OCR) for scanned images can vary depending on the image quality. Ensure your scanned documents are as clear as possible.
-* **LLM Performance:** The quality of the synthesized answers and the identified themes is heavily reliant on the capabilities of the Generative AI model you are using (e.g., Groq's Llama 3).
-* **Dataset Size for Themes:** For the chatbot to effectively identify meaningful themes, it is recommended to provide a diverse set of at least 75 semantically related documents.
-* **Resource Limitations on Free Platforms:** Be aware that free hosting platforms like Hugging Face Spaces may have limitations on computing resources and can experience "cold starts" if the application hasn't been accessed recently.
-* **Potential Improvements:** For a more robust and user-friendly application, consider implementing more comprehensive error handling, improving the user interface and user experience, and potentially adding features for document management and visualization.
+* `render-deploy`: Active production-ready branch
 
-## Contact
+To rename it locally to `main` or `master`:
+
+```bash
+git checkout render-deploy
+git branch -M main
+git push -u origin main --force-with-lease
+```
+
+---
+
+## 👤 Author
 
 **Shiva Mishra**
+Wasserstoff AI Intern | [GitHub](https://github.com/bydefaultuser)
+
+> ✨ Powered by FastAPI, Streamlit, FAISS, HuggingFace, and Groq API
+
+```
+
+---
+```
+### ✅ Summary of What I Did
+
+| Section | Action |
+|--------|--------|
+| Folder Structure | Included, trimmed and accurate |
+| Backend/Frontend Details | Simplified, no long dependency lists |
+| Deployment Steps | Clean and structured |
+| API Endpoints | Summarized with descriptions |
+| Local Dev | Clear commands to test locally |
+| Branch Strategy | Included for clarity |
 
 
+```
