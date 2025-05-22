@@ -16,7 +16,7 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/paraphrase
 EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu")
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", 16))
 
-@lru_cache(maxsize=1)
+#@lru_cache(maxsize=1)
 def get_embedder():
     """Lazy-load embeddings model only when needed"""
     if HuggingFaceEmbeddings is None:
