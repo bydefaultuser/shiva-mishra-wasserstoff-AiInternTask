@@ -2,10 +2,8 @@ from dotenv import load_dotenv
 import os
 import logging
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query
-from fastapi.responses import JSONResponse
-
-
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pathlib import Path
 from typing import Optional, Dict, List
 
@@ -13,15 +11,18 @@ from typing import Optional, Dict, List
 load_dotenv()
 
 # Import services
-from services import ocr, pdf_ocr, chunker, embedder
-from services.faiss_store import store_chunks as faiss_store_chunks, query_chunks
-from services.embedder import get_embedder
-from services.llm import generate_structured_answer
+try:
+    from services import ocr, pdf_ocr, chunker, embedder
+    from services.faiss_store import store_chunks as faiss_store_chunks, query_chunks
+    from services.embedder import get_embedder
+    from services.llm import generate_structured_answer
+except Exception as e:
+    raise ImportError(f"Failed to load backend services: {e}")
 
 # Initialize FastAPI
 app = FastAPI(title="Document Research Backend (FAISS Only)")
 
-# Configure CORS (use environment variable for allowed origins)
+# Configure CORS middleware
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8501").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -159,6 +160,7 @@ async def upload_document(
 ):
     logger.info(f"Received upload: {file.filename} with content_type: {file.content_type}")
     allowed_types = ["application/pdf", "image/jpeg", "image/png", "image/tiff"]
+    
     if file.content_type not in allowed_types:
         logger.warning(f"Unsupported file type: {file.content_type} for file {file.filename}")
         raise HTTPException(status_code=400, detail="Unsupported file type")

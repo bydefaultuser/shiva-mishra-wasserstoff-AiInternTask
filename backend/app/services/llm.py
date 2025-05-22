@@ -5,19 +5,21 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Initialize Groq client using environment variables
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-70b-8192")
+# Lazy-load Groq client only when needed
+def get_groq_client():
+    api_key = os.getenv("GROQ_API_KEY")
+    model = os.getenv("GROQ_MODEL", "llama3-70b-8192")
 
-if not GROQ_API_KEY:
-    logger.error("❌ GROQ_API_KEY is not set. Please set it in your environment.")
-    raise ValueError("GROQ_API_KEY is not set. Please set the GROQ_API_KEY environment variable.")
+    if not api_key:
+        logger.error("❌ GROQ_API_KEY is not set. Please set it in environment.")
+        raise ValueError("GROQ_API_KEY is required")
 
-try:
-    client = Groq(api_key=GROQ_API_KEY)
-except Exception as e:
-    logger.error(f"❌ Failed to initialize Groq client: {e}")
-    raise
+    try:
+        return Groq(api_key=api_key), model
+    except Exception as e:
+        logger.error(f"Groq client initialization failed: {e}")
+        raise RuntimeError("Failed to initialize Groq client") from e
+
 
 def generate_structured_answer(
     question: str,
@@ -28,16 +30,26 @@ def generate_structured_answer(
 ) -> str:
     """
     Accepts a user question and retrieved document chunks with metadata.
-    Returns a structured LLM response with document-level answers and thematic synthesis in Markdown format.
+    Returns a structured LLM response with document-level answers and thematic synthesis.
     """
+
+    # Lazy-load Groq client only when needed
+    try:
+        client, model = get_groq_client()
+    except Exception as e:
+        logger.error(f"LLM generation failed - Groq client error: {str(e)}")
+        return f"⚠️ AI synthesis temporarily unavailable: {str(e)}"
+
     formatted_chunks = ""
     for i, doc in enumerate(docs):
         doc_id = f"DOC{i + 1:03}"
         content = doc["content"].replace("\n", " ").strip()
-        citation = doc["citation"]
+        citation = doc.get("citation", "N/A")
+
         formatted_chunks += f"{doc_id}:\n{content}\nCitation: {citation}\n\n"
 
     prompt_instructions = ""
+
     if style == "detailed":
         prompt_instructions += "Provide a detailed and comprehensive answer.\n"
     elif style == "concise":
@@ -85,15 +97,15 @@ Write clearly and concisely.
 
     try:
         response = client.chat.completions.create(
-            model=GROQ_MODEL,
+            model=model,
             messages=[{
                 "role": "user",
                 "content": prompt
             }],
             temperature=0.7,
-            max_tokens=2048
+            max_tokens=1024  # Reduced token usage to save memory
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        logger.error(f"LLM generation failed: {e}")
-        raise
+        logger.error(f"LLM generation failed: {e}", exc_info=True)
+        return f"⚠️ Failed to generate summary: {str(e)}"

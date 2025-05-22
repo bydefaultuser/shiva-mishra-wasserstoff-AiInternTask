@@ -12,16 +12,19 @@ from langchain.embeddings.base import Embeddings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get FAISS index path from environment variable
-FAISS_PATH = os.getenv("FAISS_PATH", "/tmp/faiss_index")  # Default to /tmp for GCP
-VDB_PATH = Path(FAISS_PATH).with_suffix(".pkl")  # Add .pkl extension
+# Use /tmp for ephemeral storage
+FAISS_PATH = os.getenv("FAISS_PATH", "/tmp/faiss_index")
+VDB_PATH = Path(FAISS_PATH).with_suffix(".pkl")  # Save as .pkl file
 
 def _save_index(vstore: FAISS):
-    """Save FAISS index to disk using environment variable path"""
+    """Save FAISS index to disk"""
     try:
+        # Ensure directory exists in /tmp
         VDB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
         with open(VDB_PATH, "wb") as f:
             pickle.dump(vstore, f)
+
         logger.info(f"💾 FAISS index saved to {VDB_PATH}")
     except Exception as e:
         logger.error(f"❌ Failed to save FAISS index: {str(e)}")
@@ -29,11 +32,15 @@ def _save_index(vstore: FAISS):
 def _load_index() -> Optional[FAISS]:
     """Load FAISS index from disk if available"""
     try:
-        if VDB_PATH.exists():
-            with open(VDB_PATH, "rb") as f:
-                return pickle.load(f)
-        logger.warning("⚠️ No existing FAISS index found")
-        return None
+        if not VDB_PATH.exists():
+            logger.warning("⚠️ No existing FAISS index found")
+            return None
+
+        with open(VDB_PATH, "rb") as f:
+            index = pickle.load(f)
+
+        logger.info("🧠 Loaded existing FAISS index")
+        return index
     except Exception as e:
         logger.error(f"❌ Failed to load FAISS index: {str(e)}")
         return None
@@ -45,11 +52,11 @@ def store_chunks(
 ):
     """
     Stores text chunks and metadata into a FAISS vector store.
-    Appends if an index already exists.
+    Creates new index or appends to existing one.
     """
     try:
         docs = [Document(page_content=c, metadata=m) for c, m in zip(chunks, metadatas)]
-        
+
         index = _load_index()
         if index:
             logger.info("🔄 Appending to existing FAISS index")
@@ -80,6 +87,7 @@ def query_chunks(
 
         docs_and_scores = index.similarity_search_with_score(question, k=k)
 
+        # Apply filename filter if provided
         if filters and "filename" in filters:
             allowed = set(filters["filename"]["$in"])
             original_count = len(docs_and_scores)
